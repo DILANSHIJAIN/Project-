@@ -1,0 +1,105 @@
+const { HfInference } = require("@huggingface/inference");
+
+const CATEGORIES = {
+  Hardware: ["printer", "monitor", "keyboard", "mouse", "cable", "device", "hardware", "equipment"],
+  Software: ["crash", "error", "bug", "installation", "update", "software", "application", "program"],
+  Network: ["internet", "connection", "wifi", "vpn", "network", "proxy", "download", "upload"],
+  Account: ["password", "login", "access", "permission", "email", "profile", "account", "credentials"],
+};
+
+const categorizeTicket = (title, query) => {
+  const text = `${title} ${query}`.toLowerCase();
+  
+  for (const [category, keywords] of Object.entries(CATEGORIES)) {
+    if (keywords.some(keyword => text.includes(keyword))) {
+      return category;
+    }
+  }
+  return "General";
+};
+
+const predictPriority = (title, query, category) => {
+  const text = `${title} ${query}`.toLowerCase();
+  
+  // Critical keywords
+  if (["down", "crash", "security", "breach", "urgent", "critical", "emergency"].some(w => text.includes(w))) {
+    return "P1";
+  }
+  
+  // High priority keywords
+  if (["important", "broken", "major", "blocked", "cannot"].some(w => text.includes(w))) {
+    return "P2";
+  }
+  
+  // Medium priority by default
+  if (["help", "issue", "problem"].some(w => text.includes(w))) {
+    return "P3";
+  }
+  
+  // Low priority
+  return "P4";
+};
+
+const generateTicketData = async (query, context = "", history = []) => {
+  const apiKey = process.env.HF_API_KEY;
+  if (!apiKey) {
+    console.error("❌ ERROR: HF_API_KEY is not defined in your .env file!");
+    return null;
+  }
+
+  const KNOWLEDGE_BASE = `
+  - Printer: Restart spooler, check cables, or refill ink.
+  - Password/Login: Use 'Forgot Password' on the login screen.
+  - Internet/VPN: Restart router, check proxy settings, or verify credentials.
+  - Software Crash: Clear cache, check for updates, or reinstall.
+  - Account Access: Verify email verification or contact HR for permissions.
+  `;
+
+  const hf = new HfInference(apiKey);
+
+  try {
+    const result = await hf.chatCompletion({
+      model: "Qwen/Qwen2.5-7B-Instruct",
+      messages: [
+        {
+          role: "system",
+          content: `You are an incredibly helpful AI Support Assistant.
+1. Your goal is to solve the user's problem immediately using the Knowledge Base or Previous Resolutions.
+2. If it is a clear technical issue that requires human intervention, or if the user asks for a ticket, **first ask the user for confirmation (e.g., 'Would you like me to create a ticket for this issue?')**. Only if the user confirms, then generate the ticket using this format:
+
+[TICKET_START]
+Title: [Short title - max 50 chars]
+Category: [Hardware/Software/Network/Account/General]
+Priority: [P1/P2/P3/P4]
+Summary: [Detailed summary of the issue and recommended first steps]
+[TICKET_END]
+
+Priority Guide:
+- P1: Critical/Urgent (system down, security issue, data loss)
+- P2: High (significant feature broken, multiple users affected)
+- P3: Medium (normal operations affected, single user or workaround available)
+- P4: Low (minor issues, cosmetic problems, enhancement requests)
+`
+        },
+        {
+          role: "user",
+          content: `KNOWLEDGE BASE: ${KNOWLEDGE_BASE}\nPREVIOUS RESOLUTIONS: ${context}\nUSER QUERY: ${query}`
+        }
+      ],
+      max_tokens: 200,
+    });
+
+    return result.choices[0].message.content;
+
+  } catch (error) {
+    console.error("⚠️ AI Generation Error:", error.message);
+    return null;
+  }
+};
+
+module.exports = { 
+  generateTicketData,
+  categorizeTicket,
+  predictPriority,
+  CATEGORIES
+};

@@ -13,6 +13,9 @@ const loginSchema =
 const validate =
   require("../middlewares/validate-middleware");
 
+const authMiddleware=require("../middlewares/auth-middleware");
+
+
 
 // Home route
 router.get("/", authcontrollers.home);
@@ -32,6 +35,6 @@ router.post(
   validate(loginSchema),
   authcontrollers.login
 );
-
+router.route("/user").get(authMiddleware,authcontrollers.user);
 
 module.exports = router;
