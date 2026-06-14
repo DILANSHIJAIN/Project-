@@ -1,5 +1,15 @@
-require("dotenv").config();
+const dotenv = require("dotenv");
+const result = dotenv.config();
+
+if (result.error) {
+    console.error("❌ Failed to load .env file:", result.error);
+} else {
+    console.log("✅ .env file loaded successfully. Keys found:", Object.keys(result.parsed || {}));
+}
+
 const express = require("express");
+const path = require("path");
+const os = require("os");
 const cors = require("cors");
 
 const router = require("./router/auth-router");
@@ -15,12 +25,25 @@ const analyticsRoute = require("./router/analytics-router");
 const rbacTestRoute = require("./router/rbac-test-router");
 const homeRoute = require("./home-router");
 const aboutRoute = require("./about-router");
+const uploadRoute = require("./upload-router");
 const { generateDailyAnalytics } = require("./controllers/analytics-controller");
 
 const app = express();
 
 const corsOptions = {
-    origin: "http://localhost:5173",
+    origin: (origin, callback) => {
+        const allowedOrigins = [
+            process.env.FRONTEND_URL, 
+            "http://localhost:5173", 
+            "http://127.0.0.1:5173",
+            "http://10.238.173.228:5173" // Hardcoded safety for your current IP
+        ];
+        if (!origin || allowedOrigins.some(o => o && o.startsWith(origin)) || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     methods: "GET,POST,PUT,DELETE,PATCH,HEAD",
     credentials: true,
 };
@@ -28,6 +51,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from the 'public' directory
+app.use("/images", express.static(path.join(__dirname, "public/images")));
 
 // Log all incoming requests and their response status codes to the terminal
 app.use((req, res, next) => {
@@ -47,6 +73,7 @@ app.use("/api/analytics", analyticsRoute);
 app.use("/api/rbac-test", rbacTestRoute);
 app.use("/api/home", homeRoute);
 app.use("/api/about", aboutRoute);
+app.use("/api/upload", uploadRoute);
 
 app.get("/", (req, res) => {
     res.status(200).send("Welcome to AI-Powered Helpdesk & Ticketing System");
@@ -68,8 +95,16 @@ connectDb()
             console.warn("⚠️ Analytics generation failed:", err.message);
         }
 
+        // World-class IP detection to help with mobile testing
+        const networkInterfaces = os.networkInterfaces();
+        let networkIp = "localhost";
+        for (const interfaceName in networkInterfaces) {
+            const iface = networkInterfaces[interfaceName].find(details => details.family === 'IPv4' && !details.internal);
+            if (iface) networkIp = iface.address;
+        }
+
         app.listen(PORT, () => {
-            console.log(`server is running at port:${PORT}`);
+            console.log(`🚀 Server running! Local: http://localhost:${PORT} | Network: http://${networkIp}:${PORT}`);
         });
     })
     .catch((err) => {

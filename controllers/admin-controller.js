@@ -1,7 +1,11 @@
 const User=require("../models/user-model");
 const Contact=require("../models/contact-model");
 const Service=require("../models/service-model");
-const Page = require("../page-model");
+
+// Ensure page-model.js is in your backend root or models folder
+// If you move it to models/, change this to require("../models/page-model")
+const Page = require("../page-model"); 
+
 const getAllUsers=async(req,res,next)=>{
     try{
         const users=await User.find();
@@ -33,10 +37,16 @@ const updateUserById = async (req, res, next) => {
         const id = req.params.id;
         const updateUserData = req.body;
 
-        const updatedData = await User.updateOne(
-            { _id: id },
-            { $set: updateUserData }
+        const updatedData = await User.findByIdAndUpdate(
+            id,
+            { $set: updateUserData },
+            { new: true, runValidators: true }
         );
+
+        if (!updatedData) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
         return res.status(200).json(updatedData);
     } catch (error) {
         next(error);
@@ -173,9 +183,64 @@ const updateAboutPageContent = async (req, res, next) => {
     }
 };
 
+const getContactPageData = async (req, res, next) => {
+    try {
+        let page = await Page.findOne({ pageName: "contact" });
+        if (!page) {
+            // Return default structure if not found to prevent frontend crashes
+            return res.status(200).json({
+                contactImage: "/images/contact.png", // Default image
+                mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d224346.48167620343!2d77.06889926628777!3d28.52755440978482!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ce3c6c1f8b7df%3A0x7c5f5d7b5d8c5f6d!2sNew%20Delhi%2C%20Delhi!5e0!3m2!1sen!2sin!4v1710000000000!5m2!1sen!2sin" // Default map
+            });
+        }
+        return res.status(200).json(page.content);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const updateContactPageContent = async (req, res, next) => {
+    try {
+        const updatedPage = await Page.findOneAndUpdate(
+            { pageName: "contact" },
+            { content: req.body },
+            { new: true, upsert: true, runValidators: true } // upsert: true creates the document if it doesn't exist, runValidators ensures schema validation
+        );
+        res.status(200).json({
+            message: "Contact page updated successfully",
+            content: updatedPage.content
+        });
+    } catch (error) {
+        console.error("Error updating contact page content:", error); // Log the detailed error on the server
+        res.status(500).json({
+            message: "Failed to update contact content due to a server error.",
+            extraDetails: error.message // Provide the actual error message from Mongoose/MongoDB
+        });
+    }
+};
+
+// Placeholder for your Ticket/Chat logic enhancement
+const processAIChat = async (req, res) => {
+    const { query, chatHistory, category } = req.body;
+    
+    /* 
+       For Google Gemini:
+       const chat = model.startChat({ history: chatHistory });
+       const result = await chat.sendMessage(query);
+       
+       For Groq:
+       const completion = await groq.chat.completions.create({
+         messages: [...chatHistory, { role: "user", content: query }],
+         model: "llama3-70b-8192",
+       });
+    */
+    
+    // This ensures the bot provides a "Valid Conversation" based on history.
+};
+
 module.exports = { 
     getAllUsers, getAllContacts, updateUserById, deleteUserById, deleteContactById,
     getAllServices, updateServiceById, deleteServiceById,
-    getHomePageData, getAboutPageData,
-    updateHomePageContent, updateAboutPageContent
+    getHomePageData, getAboutPageData, getContactPageData,
+    updateHomePageContent, updateAboutPageContent, updateContactPageContent
 };

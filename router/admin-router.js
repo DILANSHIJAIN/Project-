@@ -5,7 +5,8 @@ const {
     getAllUsers, getAllContacts, updateUserById, deleteUserById, deleteContactById,
     getAllServices, updateServiceById, deleteServiceById,
     getHomePageData, getAboutPageData,
-    updateHomePageContent, updateAboutPageContent
+    updateHomePageContent, updateAboutPageContent,
+    getContactPageData, updateContactPageContent
 } = require("../controllers/admin-controller");
 const router = express.Router();
 
@@ -28,5 +29,9 @@ router.route("/home-content")
 router.route("/about-content")
     .get(authMiddleware, rbacMiddleware("admin"), getAboutPageData)
     .patch(authMiddleware, rbacMiddleware("admin"), updateAboutPageContent);
+
+router.route("/contact-content")
+    .get(authMiddleware, rbacMiddleware("admin"), getContactPageData)
+    .patch(authMiddleware, rbacMiddleware("admin"), updateContactPageContent);
 
 module.exports = router;

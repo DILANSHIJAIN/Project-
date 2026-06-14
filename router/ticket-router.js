@@ -6,6 +6,7 @@ const Ticket = require("../models/ticket-modal");
 const SLA = require("../models/sla-model");
 
 const { generateTicketData, categorizeTicket, predictPriority } = require("../utils/ai");
+const { performWebSearch } = require("../utils/search");
 const authMiddleware = require("../middlewares/auth-middleware");
 const { createSLA } = require("../controllers/sla-controller");
 const { createNotification } = require("../controllers/notification-controller");
@@ -72,8 +73,28 @@ router.post("/", authMiddleware, async (req, res) => {
   try {
     // 1. SEARCH FOR SIMILAR PREVIOUS RESOLUTIONS
     let previousResolutions = "";
+
+    // 1a. CHECK FOR TICKET STATUS QUERIES (Feature 6)
+    const statusMatch = req.body.query.match(/(?:status|update|check|happening|about).*?(?:ticket|complaint)?.*?(\w{20,})/i);
+    if (statusMatch) {
+        const ticketId = statusMatch[1];
+        const existingTicket = await Ticket.findOne({ _id: ticketId, userId: req.user._id });
+        if (existingTicket) {
+            return res.status(200).json({
+                message: "Status Update",
+                aiResult: `🔍 I found your ticket **#${ticketId}**. \n\n**Status:** ${existingTicket.status}\n**Category:** ${existingTicket.category}\n**Update:** Our team is currently working on this.`,
+                ticketSaved: false,
+            });
+        }
+    }
+
+    // 1b. SENTIMENT ANALYSIS & ESCALATION (Feature 7)
+    const frustrationKeywords = ["frustrated", "angry", "terrible", "nobody helps", "worst", "slow support", "waiting too long"];
+    const isFrustrated = frustrationKeywords.some(kw => req.body.query.toLowerCase().includes(kw));
+    
     try {
-      const keywords = req.body.query.split(" ").filter(w => w.length > 4);
+      const stopWords = new Set(["there", "their", "about", "would", "could", "should"]);
+      const keywords = req.body.query.split(" ").filter(w => w.length > 4 && !stopWords.has(w.toLowerCase()));
       if (keywords.length > 0) {
         const similar = await Ticket.find({
           $or: keywords.map(k => ({ aiSummary: { $regex: k, $options: "i" } }))
@@ -87,11 +108,60 @@ router.post("/", authMiddleware, async (req, res) => {
       console.error("Similarity search failed:", searchError.message);
     }
 
-    // AI GENERATION
+    // 1c. REFINED WEB SEARCH TRIGGER (Checks if query is informational or a question)
+    let webSearchResults = "";
+    const infoRegex = /^(what|how|why|when|where|who|meaning|latest|news|guide|help with|tell me about)/i;
+    const isInformational = infoRegex.test(req.body.query) || req.body.query.trim().endsWith("?");
+
+    // Only search if it's informational
+    if (isInformational) {
+        console.log("🔍 Query detected as informational. Performing Google Search...");
+        webSearchResults = await performWebSearch(req.body.query);
+    }
+
+    // 1d. CONTEXT PREPARATION (Maintaining Session State)
+    const conversationContext = req.body.chatHistory
+      ? req.body.chatHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n")
+      : "";
+
+    // AI GENERATION WITH STRUCTURED CONTEXT
     let aiResult;
     try {
-      // Pass similar resolutions to AI as context
-      aiResult = await generateTicketData(req.body.query, previousResolutions);
+      const systemInstructions = `
+You are AI Helpdesk. Strictly follow these rules:
+- **CONCISE**: Use bullet points. No long paragraphs.
+- **WORD LIMIT**: Max 50 words per response unless detailed explanation is requested.
+- **GATHER DATA**: Collect Name, Contact, Locality, Description, Timing. Photos/Images are optional unless specified as required by category.
+- **ENFORCE**: For the **Food** category, at least 2 photos are MANDATORY. You MUST NOT create a ticket or output [TICKET_START] until images are attached (look for "Attached Images").
+- **PROGRESS**: Check history. If "Continue Troubleshooting" is selected, acknowledge previous steps failed and provide 2 NEW advanced alternatives. NEVER repeat.
+- **ANALYSIS**: State "Likely Cause" only once. Troubleshooting steps must be ACTIONABLE fixes, not data gathering (e.g., "provide photos" is NOT a troubleshooting step).
+- **DECISION**: Ask to resolve or "Create Support Ticket".
+
+CATEGORY FIELDS (Add to gather data if relevant):
+- Technical: Device, OS, Error.
+- Billing: TransID, Amount.
+- Infra: Type, Severity.
+- Vehicle: Number, Issue Type.
+- Food: Platform, OrderID, Item, IssueType, Restaurant, Photos (Min 2, REQUIRED).
+STYLE:
+- Professional and analytical.
+- Bullet points only for lists.
+`.trim();
+      
+      const combinedContext = `
+${systemInstructions}
+
+CONVERSATION HISTORY:
+${conversationContext || "No previous history in this session."}
+
+INTERNAL COMPANY RESOLUTIONS:
+${previousResolutions || "No direct internal resolution found."}
+
+GOOGLE WEB SEARCH DATA:
+${webSearchResults || "No external data retrieved."}
+`.trim();
+
+      aiResult = await generateTicketData(req.body.query, combinedContext);
     } catch (aiError) {
       console.error("⚠️ AI API Call Failed:", aiError.message);
       aiResult = null; 
@@ -107,131 +177,64 @@ router.post("/", authMiddleware, async (req, res) => {
 
     if (aiResult && aiResult.includes("[TICKET_START]")) {
       isTicketData = true;
+
       const lines = aiResult.split("\n");
-      let titleMatch, categoryMatch, priorityMatch, summaryMatch; // Declare once outside the loop
       lines.forEach(line => {
-        titleMatch = line.match(/Title\s*[:\-]\s*(.*)/i);
-        categoryMatch = line.match(/Category\s*[:\-]\s*(.*)/i);
-        priorityMatch = line.match(/Priority\s*[:\-]\s*(.*)/i);
-        summaryMatch = line.match(/Summary\s*[:\-]\s*(.*)/i);
+        const titleMatch = line.match(/Title\s*[:\-]\s*(.*)/i);
+        const categoryMatch = line.match(/Category\s*[:\-]\s*(.*)/i);
+        const priorityMatch = line.match(/Priority\s*[:\-]\s*(.*)/i);
+        const summaryMatch = line.match(/Summary\s*[:\-]\s*(.*)/i);
 
         if (titleMatch) parsedAiResult.title = titleMatch[1].trim();
         if (categoryMatch) parsedAiResult.category = categoryMatch[1].trim();
         if (priorityMatch) parsedAiResult.priority = priorityMatch[1].trim();
         if (summaryMatch) parsedAiResult.summary = summaryMatch[1].trim();
       });
-    }
 
-    // IMPROVED MEANINGFUL CHECK (even if AI is offline)
-    const commonGreetings = ["hi", "hello", "hey", "test", "help"];
-    const userQueryClean = req.body.query.trim().toLowerCase();
-    const isUseless = parsedAiResult.isGreeting || 
-                      req.body.query.length < 5 || 
-                      commonGreetings.includes(userQueryClean);
-
-    if (isUseless) {
-      return res.status(200).json({
-        message: "Greeting",
-        aiResult: aiResult || "Hello! How can I help you today?",
-        ticketSaved: false,
-      });
+      // Hard Enforcement: Block Food tickets without at least 2 photos
+      const activeCategory = req.body.category || parsedAiResult.category || "General";
+      if (activeCategory === "Food") {
+        // Check current query and history for image paths
+        // Ensure we are mapping the content that includes image paths (aiContent)
+        const historyContent = req.body.chatHistory ? req.body.chatHistory.map(m => m.aiContent || m.content).join(" ") : "";
+        const fullConversation = (req.body.query || "") + " " + historyContent;
+        
+        console.log("DEBUG: Full conversation for image check:", fullConversation); // Added debug log
+        // Robust case-insensitive check for upload paths
+        const imageMatches = fullConversation.match(/uploads[\\/]/gi) || []; 
+        console.log("DEBUG: Image matches found:", imageMatches.length); // Added debug log
+        if (imageMatches.length < 2) {
+          isTicketData = false;
+          aiResult = `I'm sorry, but I cannot create a support ticket for a food issue without at least 2 photos as evidence. Currently, I only see ${imageMatches.length} photo(s). Please upload the required evidence to proceed.`;
+        }
+      }
     }
 
     if (isTicketData) {
-      // Use AI helpers as fallbacks if parsing didn't find specific fields
-      let category = parsedAiResult.category || categorizeTicket(parsedAiResult.title || req.body.title, req.body.query);
-
-      // Detect Infrastructure issues (Water/Drainage)
-      const infraKeywords = ["water", "supply", "drainage", "leak", "pipe", "plumbing", "blockage", "tap", "sink", "toilet", "flush"];
-      if (infraKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Infrastructure";
-      }
-
-      // Detect Login & Authentication issues
-      const loginAuthKeywords = ["password", "locked", "otp", "login", "signin", "sign-in", "authentication"];
-      if (loginAuthKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Login & Authentication";
-      }
-
-      // Detect Account Management issues
-      const accountMgmtKeywords = ["profile", "settings", "creation", "deletion", "account update", "preferences"];
-      if (accountMgmtKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Account Management";
-      }
-
-      // Detect Security issues
-      const securityKeywords = ["malware", "virus", "phishing", "hack", "unauthorized", "breach", "spam", "suspicious", "ransomware"];
-      if (securityKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Security";
-      }
-
-      // Detect Data & Database issues
-      const dataDatabaseKeywords = ["backup", "restore", "data loss", "storage", "hard drive", "cloud storage", "file access", "sync", "missing files", "database", "query", "record"];
-      if (dataDatabaseKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Data & Database";
-      }
-
-      // Detect Bug Report issues
-      const bugKeywords = ["bug", "glitch", "ui issue", "frontend issue", "unexpected behavior"];
-      if (bugKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Bug Report";
-      }
-
-      // Detect Service Request issues
-      const serviceRequestKeywords = ["installation", "resource request", "setup request", "software request"];
-      if (serviceRequestKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Service Request";
-      }
-
-      // Detect Performance Issues
-      const performanceKeywords = ["slow", "loading time", "timeout", "lag", "latency", "freezing"];
-      if (performanceKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Performance Issues";
-      }
-
-      // Detect Complaint issues
-      const complaintKeywords = ["poor service", "agent complaint", "unresolved", "frustrated", "dissatisfied"];
-      if (complaintKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Complaint";
-      }
-
-      // Detect Integration & API issues
-      const integrationKeywords = ["api", "integration", "third-party", "webhook", "endpoint", "connection error"];
-      if (integrationKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Integration & API";
-      }
-
-      // Detect Printing issues
-      const printingKeywords = ["printer", "print", "scanner", "scan", "ink", "toner", "paper jam", "offline printer", "not printing"];
-      if (printingKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Printing";
-      }
-
-      // Detect Email & Collaboration issues
-      const emailCollabKeywords = ["email", "outlook", "gmail", "calendar", "meeting", "teams", "zoom", "communication", "sync email", "email not sending"];
-      if (emailCollabKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Email & Collaboration";
-      }
-
-      // Detect Feature Request/Suggestion issues
-      const featureRequestKeywords = ["feature", "request", "suggestion", "new functionality", "idea", "improve", "wishlist"];
-      if (featureRequestKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Feature Request";
-      }
-
-      // Detect Vehicle Maintenance issues
-      const vehicleKeywords = ["vehicle", "car", "bike", "engine", "maintenance", "repair", "breakdown", "transport", "tire", "fuel"];
-      if (vehicleKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Vehicle Maintenance";
-      }
-
-      // Detect Traffic & Logistics issues
-      const trafficKeywords = ["traffic", "jam", "road", "route", "delivery", "logistics", "highway", "congestion", "navigation"];
-      if (trafficKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
-          category = "Traffic & Logistics";
-      }
+      // CATEGORIZATION: AI is now disabled for categorization per user request. 
+      // Users will manually select the category. Defaulting to "General" if not provided.
+      let category = req.body.category || "General";
+      
+      // 9. SMART ROUTING (Feature 9)
+      // Map categories to specific backend teams
+      const routingMap = {
+          "Billing": "Finance Team",
+          "Technical": "Network Support",
+          "Infrastructure": "Facilities Management",
+          "Vehicle Maintenance": "Fleet Operations",
+          "Performance Issues": "IT Infrastructure",
+          "Security": "Cybersecurity Team",
+          "General": "Customer Relations",
+          "Food": "Food Safety/Support Team"
+      };
+      const assignedTeam = routingMap[category] || "General Support";
 
       let priority = parsedAiResult.priority || predictPriority(parsedAiResult.title || req.body.title, req.body.query, category);
+      
+      // ESCALATE IF FRUSTRATED (Feature 7)
+      if (isFrustrated && priority !== "P1") {
+          priority = "P1";
+      }
 
       // Adjust priority for urgent infrastructure issues (e.g., floods or total supply failure)
       const urgentInfraKeywords = ["flood", "burst", "no water", "overflow", "blockage"];
@@ -260,6 +263,7 @@ router.post("/", authMiddleware, async (req, res) => {
         priority,
         aiSummary: parsedAiResult.summary || aiResult,
         aiCategory: category,
+        assignedTeam // Added field for routing
       });
 
       const savedTicket = await newTicket.save();
@@ -282,7 +286,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
       return res.status(201).json({
         message: "Ticket Created Successfully",
-        aiResult: "I've opened a ticket for you based on our conversation.",
+        aiResult: aiResult.replace(/\[TICKET_START\]|\[TICKET_END\]/g, "").trim(),
         ticket: savedTicket,
         ticketSaved: true,
       });
@@ -291,7 +295,7 @@ router.post("/", authMiddleware, async (req, res) => {
     // OTHERWISE, JUST RETURN THE CONVERSATION
     res.status(200).json({
       message: "Conversation",
-      aiResult: (aiResult || "I'm having a bit of trouble processing that. Can you rephrase?").replace(/\[TICKET_START\]|\[TICKET_END\]/g, "").trim(),
+      aiResult: (aiResult || "I understand you're facing an issue, but I need a few more details to help you effectively. Could you elaborate on what's happening?").replace(/\[TICKET_START\]|\[TICKET_END\]/g, "").trim(),
       ticketSaved: false,
     });
 

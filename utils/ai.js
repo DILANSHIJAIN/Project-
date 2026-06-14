@@ -69,7 +69,7 @@ const generateTicketData = async (query, context = "", history = []) => {
 
 [TICKET_START]
 Title: [Short title - max 50 chars]
-Category: [Hardware/Software/Network/Account/General]
+Category: [General/Technical/Billing/Login & Authentication/Account Management/Infrastructure/Security/Data & Database/Bug Report/Service Request/Performance Issues/Complaint/Integration & API/Printing/Email & Collaboration/Feature Request/Vehicle Maintenance/Traffic & Logistics]
 Priority: [P1/P2/P3/P4]
 Summary: [Detailed summary of the issue and recommended first steps]
 [TICKET_END]
