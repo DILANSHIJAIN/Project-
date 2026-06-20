@@ -12,6 +12,7 @@ const { createSLA } = require("../controllers/sla-controller");
 const { createNotification } = require("../controllers/notification-controller");
 const { generateDailyAnalytics } = require("../controllers/analytics-controller");
 const rbacMiddleware = require("../middlewares/rbac-middleware");
+const { sendTicketEmail } = require("../utils/mailer");
 
 // GET ALL TICKETS
 // Restricted to Admins only
@@ -141,11 +142,12 @@ CATEGORY FIELDS (Add to gather data if relevant):
 - Technical: Device, OS, Error.
 - Billing: TransID, Amount.
 - Infra: Type, Severity.
-- Vehicle: Number, Issue Type.
+- Vehicle: Number, Issue Type (Service/Breakdown/Theft).
 - Food: Platform, OrderID, Item, IssueType, Restaurant, Photos (Min 2, REQUIRED).
 STYLE:
 - Professional and analytical.
 - Bullet points only for lists.
+- **CURRENCY**: Always use ₹ (INR) for any price or amount mentioned.
 `.trim();
       
       const combinedContext = `
@@ -178,18 +180,16 @@ ${webSearchResults || "No external data retrieved."}
     if (aiResult && aiResult.includes("[TICKET_START]")) {
       isTicketData = true;
 
-      const lines = aiResult.split("\n");
-      lines.forEach(line => {
-        const titleMatch = line.match(/Title\s*[:\-]\s*(.*)/i);
-        const categoryMatch = line.match(/Category\s*[:\-]\s*(.*)/i);
-        const priorityMatch = line.match(/Priority\s*[:\-]\s*(.*)/i);
-        const summaryMatch = line.match(/Summary\s*[:\-]\s*(.*)/i);
+      // Use regex to extract fields from the block, handling multi-line summaries correctly
+      const titleMatch = aiResult.match(/Title\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const categoryMatch = aiResult.match(/Category\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const priorityMatch = aiResult.match(/Priority\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const summaryMatch = aiResult.match(/Summary\s*[:\-]\s*([\s\S]*?)(?=\[TICKET_END\]|$)/i);
 
-        if (titleMatch) parsedAiResult.title = titleMatch[1].trim();
-        if (categoryMatch) parsedAiResult.category = categoryMatch[1].trim();
-        if (priorityMatch) parsedAiResult.priority = priorityMatch[1].trim();
-        if (summaryMatch) parsedAiResult.summary = summaryMatch[1].trim();
-      });
+      if (titleMatch) parsedAiResult.title = titleMatch[1].trim();
+      if (categoryMatch) parsedAiResult.category = categoryMatch[1].trim();
+      if (priorityMatch) parsedAiResult.priority = priorityMatch[1].trim();
+      if (summaryMatch) parsedAiResult.summary = summaryMatch[1].trim();
 
       // Hard Enforcement: Block Food tickets without at least 2 photos
       const activeCategory = req.body.category || parsedAiResult.category || "General";
@@ -242,14 +242,14 @@ ${webSearchResults || "No external data retrieved."}
           priority = "P2"; // High priority for physical infrastructure failure
       }
 
-      // Adjust priority for urgent vehicle breakdowns
-      if (category === "Vehicle Maintenance" && (req.body.query.toLowerCase().includes("breakdown") || req.body.query.toLowerCase().includes("emergency"))) {
+      // Adjust priority for urgent vehicle breakdowns or theft
+      if (category === "Vehicle Maintenance" && (req.body.query.toLowerCase().includes("breakdown") || req.body.query.toLowerCase().includes("emergency") || req.body.query.toLowerCase().includes("theft") || req.body.query.toLowerCase().includes("stolen"))) {
           priority = "P1"; // Critical priority for stranded vehicles
       }
 
       // Force P4 (Low) for feature requests, suggestions, or explicitly non-urgent queries
       const lowPriorityKeywords = ["not urgent", "would be nice", "could you please", "suggestion", "feedback", "improvement", "minor"];
-      if (lowPriorityKeywords.some(kw => req.body.query.toLowerCase().includes(kw))) {
+      if (lowPriorityKeywords.some(kw => req.body.query.toLowerCase().includes(kw)) || category === "Feature Request") {
           priority = "P4";
       }
 
@@ -284,9 +284,23 @@ ${webSearchResults || "No external data retrieved."}
         savedTicket.priority
       );
 
+      // 10. SEND CONFIRMATION EMAIL
+      try {
+        await sendTicketEmail(req.user.email, savedTicket);
+      } catch (mailError) {
+        console.error("📧 Email Notification Failed:", mailError.message);
+      }
+
       return res.status(201).json({
         message: "Ticket Created Successfully",
-        aiResult: aiResult.replace(/\[TICKET_START\]|\[TICKET_END\]/g, "").trim(),
+        aiResult: `✅ **Your ticket has been successfully created!**\n\n${aiResult
+          // Remove technical tags
+          .replace(/\[TICKET_START\]|\[TICKET_END\]/gi, "")
+          // Remove redundant permission questions about ticket creation
+          .replace(/(?:would you like|do you want|should i|shall i|why don't we).*(?:create|generate|open|submit|file|proceed).*(?:ticket|request|complaint)\??/gi, "")
+          // Remove "I can open a ticket" statements
+          .replace(/(?:i can|let me).*(?:open|create|generate).*(?:ticket|request).*(?:if you (?:wish|agree|want))?\.?/gi, "")
+          .trim()}\n\nIs there anything else I can assist you with today?`,
         ticket: savedTicket,
         ticketSaved: true,
       });

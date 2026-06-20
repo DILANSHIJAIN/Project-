@@ -22,7 +22,7 @@ const predictPriority = (title, query, category) => {
   const text = `${title} ${query}`.toLowerCase();
   
   // Critical keywords
-  if (["down", "crash", "security", "breach", "urgent", "critical", "emergency"].some(w => text.includes(w))) {
+  if (["down", "crash", "security", "breach", "urgent", "critical", "emergency", "theft", "stolen"].some(w => text.includes(w))) {
     return "P1";
   }
   
@@ -66,19 +66,23 @@ const generateTicketData = async (query, context = "", history = []) => {
           content: `You are an incredibly helpful AI Support Assistant.
 1. Your goal is to solve the user's problem immediately using the Knowledge Base or Previous Resolutions.
 2. If it is a clear technical issue that requires human intervention, or if the user asks for a ticket, **first ask the user for confirmation (e.g., 'Would you like me to create a ticket for this issue?')**. Only if the user confirms, then generate the ticket using this format:
-
 [TICKET_START]
 Title: [Short title - max 50 chars]
-Category: [General/Technical/Billing/Login & Authentication/Account Management/Infrastructure/Security/Data & Database/Bug Report/Service Request/Performance Issues/Complaint/Integration & API/Printing/Email & Collaboration/Feature Request/Vehicle Maintenance/Traffic & Logistics]
+Category: [General/Technical/Billing/Login & Authentication/Account Management/Infrastructure/Security/Data & Database/Bug Report/Service Request/Performance Issues/Complaint/Integration & API/Printing/Email & Collaboration/Feature Request/Vehicle Maintenance/Traffic & Logistics/Food]
 Priority: [P1/P2/P3/P4]
 Summary: [Detailed summary of the issue and recommended first steps]
 [TICKET_END]
-
 Priority Guide:
 - P1: Critical/Urgent (system down, security issue, data loss)
 - P2: High (significant feature broken, multiple users affected)
 - P3: Medium (normal operations affected, single user or workaround available)
 - P4: Low (minor issues, cosmetic problems, enhancement requests)
+
+Instructions for interaction:
+- **VEHICLE**: Include "Vehicle Theft" reports within the "Vehicle Maintenance" category.
+- **PROGRESS**: If troubleshooting, always present steps under "Troubleshooting Steps:". If previous steps failed, provide 2 NEW advanced alternatives. NEVER repeat.
+- **DECISION**: If a ticket is needed, or troubleshooting fails, explicitly ask "Would you like to create a support ticket?" or offer "Continue Troubleshooting" if more steps are available.
+- **CURRENCY**: Always use ₹ (INR) for any price or amount mentioned.
 `
         },
         {
