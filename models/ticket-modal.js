@@ -40,6 +40,21 @@ const ticketSchema = new Schema(
       required: true,
     },
 
+    platform: {
+      type: String,
+      default: "",
+    },
+
+    contactEmail: {
+      type: String,
+      default: "",
+    },
+
+    sourceUrl: {
+      type: String,
+      default: "",
+    },
+
     priority: {
       type: String,
       default: "P3",

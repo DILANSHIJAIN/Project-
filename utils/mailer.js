@@ -42,6 +42,9 @@ const sendTicketEmail = async (email, ticket) => {
                         <p style="margin: 5px 0;"><strong>Issue:</strong> ${ticket.title}</p>
                         <p style="margin: 5px 0;"><strong>Category:</strong> ${ticket.category}</p>
                         <p style="margin: 5px 0;"><strong>Priority:</strong> <span style="color: ${ticket.priority === 'P1' ? '#ef4444' : '#f59e0b'}; font-weight: bold;">${ticket.priority}</span></p>
+                        ${ticket.platform ? `<p style="margin: 5px 0;"><strong>Platform:</strong> ${ticket.platform}</p>` : ""}
+                        ${ticket.contactEmail ? `<p style="margin: 5px 0;"><strong>Contact Email:</strong> ${ticket.contactEmail}</p>` : ""}
+                        ${ticket.sourceUrl ? `<p style="margin: 5px 0;"><strong>Source URL:</strong> <a href="${ticket.sourceUrl}" style="color: #2563eb;">${ticket.sourceUrl}</a></p>` : ""}
                     </div>
                     <h3 style="border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Summary & Troubleshooting Steps</h3>
                     <p style="white-space: pre-wrap; font-style: italic; color: #475569;">${ticket.aiSummary}</p>
