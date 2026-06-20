@@ -182,13 +182,15 @@ ${webSearchResults || "No external data retrieved."}
       isTicketData = true;
 
       // Use regex to extract fields from the block, handling multi-line summaries correctly
-      const titleMatch = aiResult.match(/Title\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const categoryMatch = aiResult.match(/Category\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const priorityMatch = aiResult.match(/Priority\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const platformMatch = aiResult.match(/Platform\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const contactEmailMatch = aiResult.match(/Contact\s*Email\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const sourceUrlMatch = aiResult.match(/Source\s*URL\s*[:\-]\s*(.*?)(?=\n|$)/i);
-      const summaryMatch = aiResult.match(/Summary\s*[:\-]\s*([\s\S]*?)(?=\[TICKET_END\]|$)/i);
+      // Anchor each field to the start of its own line so a value that contains
+      // a field keyword (e.g. a Title echoing "Platform:") cannot be mis-parsed.
+      const titleMatch = aiResult.match(/^\s*Title\s*[:\-]\s*(.*?)\s*$/im);
+      const categoryMatch = aiResult.match(/^\s*Category\s*[:\-]\s*(.*?)\s*$/im);
+      const priorityMatch = aiResult.match(/^\s*Priority\s*[:\-]\s*(.*?)\s*$/im);
+      const platformMatch = aiResult.match(/^\s*Platform\s*[:\-]\s*(.*?)\s*$/im);
+      const contactEmailMatch = aiResult.match(/^\s*Contact\s*Email\s*[:\-]\s*(.*?)\s*$/im);
+      const sourceUrlMatch = aiResult.match(/^\s*Source\s*URL\s*[:\-]\s*(.*?)\s*$/im);
+      const summaryMatch = aiResult.match(/^\s*Summary\s*[:\-]\s*([\s\S]*?)(?=\[TICKET_END\]|$)/im);
 
       // Ignore unfilled placeholder values like "N/A" so we can fall back gracefully
       const cleanField = (val) => {
