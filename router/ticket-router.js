@@ -133,6 +133,7 @@ You are AI Helpdesk. Strictly follow these rules:
 - **CONCISE**: Use bullet points. No long paragraphs.
 - **WORD LIMIT**: Max 50 words per response unless detailed explanation is requested.
 - **GATHER DATA**: Collect Name, Contact, Locality, Description, Timing. Photos/Images are optional unless specified as required by category.
+- **REQUIRED BEFORE TICKET**: Always collect the **Platform Name** (the platform/product/website/app the issue is about), a **Contact Email**, and the **Source URL** (the exact URL/page where the issue happened). If any of these is missing, ask for it before creating the ticket.
 - **ENFORCE**: For the **Food** category, at least 2 photos are MANDATORY. You MUST NOT create a ticket or output [TICKET_START] until images are attached (look for "Attached Images").
 - **PROGRESS**: Check history. If "Continue Troubleshooting" is selected, acknowledge previous steps failed and provide 2 NEW advanced alternatives. NEVER repeat.
 - **ANALYSIS**: State "Likely Cause" only once. Troubleshooting steps must be ACTIONABLE fixes, not data gathering (e.g., "provide photos" is NOT a troubleshooting step).
@@ -184,11 +185,23 @@ ${webSearchResults || "No external data retrieved."}
       const titleMatch = aiResult.match(/Title\s*[:\-]\s*(.*?)(?=\n|$)/i);
       const categoryMatch = aiResult.match(/Category\s*[:\-]\s*(.*?)(?=\n|$)/i);
       const priorityMatch = aiResult.match(/Priority\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const platformMatch = aiResult.match(/Platform\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const contactEmailMatch = aiResult.match(/Contact\s*Email\s*[:\-]\s*(.*?)(?=\n|$)/i);
+      const sourceUrlMatch = aiResult.match(/Source\s*URL\s*[:\-]\s*(.*?)(?=\n|$)/i);
       const summaryMatch = aiResult.match(/Summary\s*[:\-]\s*([\s\S]*?)(?=\[TICKET_END\]|$)/i);
+
+      // Ignore unfilled placeholder values like "N/A" so we can fall back gracefully
+      const cleanField = (val) => {
+        const trimmed = (val || "").trim();
+        return /^(n\/?a|none|not provided|-)?$/i.test(trimmed) ? "" : trimmed;
+      };
 
       if (titleMatch) parsedAiResult.title = titleMatch[1].trim();
       if (categoryMatch) parsedAiResult.category = categoryMatch[1].trim();
       if (priorityMatch) parsedAiResult.priority = priorityMatch[1].trim();
+      if (platformMatch) parsedAiResult.platform = cleanField(platformMatch[1]);
+      if (contactEmailMatch) parsedAiResult.contactEmail = cleanField(contactEmailMatch[1]);
+      if (sourceUrlMatch) parsedAiResult.sourceUrl = cleanField(sourceUrlMatch[1]);
       if (summaryMatch) parsedAiResult.summary = summaryMatch[1].trim();
 
       // Hard Enforcement: Block Food tickets without at least 2 photos
@@ -261,6 +274,9 @@ ${webSearchResults || "No external data retrieved."}
         title: parsedAiResult.title || req.body.title || "Support Request",
         category,
         priority,
+        platform: parsedAiResult.platform || req.body.platform || "",
+        contactEmail: parsedAiResult.contactEmail || req.body.contactEmail || req.body.email || "",
+        sourceUrl: parsedAiResult.sourceUrl || req.body.sourceUrl || "",
         aiSummary: parsedAiResult.summary || aiResult,
         aiCategory: category,
         assignedTeam // Added field for routing
