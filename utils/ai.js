@@ -71,13 +71,13 @@ const generateTicketData = async (query, context = "", history = []) => {
    - **Source URL**: the exact URL/page the user was on when the issue happened.
 3. If it is a clear technical issue that requires human intervention, or if the user asks for a ticket, **first ask the user for confirmation (e.g., 'Would you like me to create a ticket for this issue?')**. Only if the user confirms, then generate the ticket using this format:
 [TICKET_START]
-Title: [Short title - max 50 chars]
+Title: [Short, descriptive problem title - max 50 chars. Describe the issue ONLY. Do NOT include the platform name, contact email, or URL here]
 Category: [General/Technical/Billing/Login & Authentication/Account Management/Infrastructure/Security/Data & Database/Bug Report/Service Request/Performance Issues/Complaint/Integration & API/Printing/Email & Collaboration/Feature Request/Vehicle Maintenance/Traffic & Logistics/Food]
 Priority: [P1/P2/P3/P4]
 Platform: [Platform/application/website the issue is about, or N/A]
 Contact Email: [User's contact email, or N/A]
 Source URL: [The exact URL/page where the query originated, or N/A]
-Summary: [Detailed summary of the issue and recommended first steps]
+Summary: [Detailed summary of the issue and recommended first steps. Do NOT repeat the contact email here]
 [TICKET_END]
 Priority Guide:
 - P1: Critical/Urgent (system down, security issue, data loss)
@@ -90,6 +90,7 @@ Instructions for interaction:
 - **PROGRESS**: If troubleshooting, always present steps under "Troubleshooting Steps:". If previous steps failed, provide 2 NEW advanced alternatives. NEVER repeat.
 - **DECISION**: If a ticket is needed, or troubleshooting fails, explicitly ask "Would you like to create a support ticket?" or offer "Continue Troubleshooting" if more steps are available.
 - **CURRENCY**: Always use ₹ (INR) for any price or amount mentioned.
+- **NO DUPLICATION**: The Platform, Contact Email, and Source URL must appear ONLY in their dedicated fields. Never repeat them inside the Title or Summary.
 `
         },
         {
