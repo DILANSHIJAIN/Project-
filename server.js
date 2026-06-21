@@ -30,6 +30,7 @@ const { generateDailyAnalytics } = require("./controllers/analytics-controller")
 
 const app = express();
 
+// Updated corsOptions layout to clean up deployment URLs securely
 const corsOptions = {
     origin: (origin, callback) => {
         const allowedOrigins = [
@@ -38,9 +39,12 @@ const corsOptions = {
             "http://127.0.0.1:5173",
             "http://10.238.173.228:5173" // Hardcoded safety for your current IP
         ];
-        if (!origin || allowedOrigins.some(o => o && o.startsWith(origin)) || allowedOrigins.includes(origin)) {
+        
+        // Checks exact matches and dynamically trims trailing slashes from deployment URLs
+        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
             callback(null, true);
         } else {
+            console.error(`🛑 Blocked by CORS: Origin was [${origin}]`);
             callback(new Error("Not allowed by CORS"));
         }
     },
