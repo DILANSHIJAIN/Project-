@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const Otp = require(require('path').join(process.cwd(), 'otp-model.js'));
+const { sendOtpEmail } = require("../utils/mailer"); // ✅ Loads your centralized mailer utility
 
 // Function to get email transporter
 const getTransporter = () => {
@@ -27,13 +29,11 @@ const home = async (req, res, next) => {
     }
 };
 
-// REGISTER
+// REGISTER (🚪 STEP 1: Validate & Send 6-Digit Verification Code)
 const register = async (req, res, next) => {
-
-    console.log(" REGISTER FUNCTION HIT");
+    console.log("🚀 OTP REGISTER INITIATION FUNCTION HIT");
 
     try {
-
         let { username, email, phone, password } = req.body;
 
         if (!username || !email || !phone || !password) {
@@ -43,24 +43,73 @@ const register = async (req, res, next) => {
         email = email.trim().toLowerCase();
 
         const userExist = await User.findOne({ email });
-
         if (userExist) {
-            return res.status(400).json({ message: "email already exists" });
+            return res.status(400).json({ message: "Email already exists" });
+        }
+
+        // Generate a secure, random 6-digit numeric OTP string
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Save OTP temporarily to MongoDB (cleans up any older attempts for this user first)
+        await Otp.deleteOne({ email });
+        await Otp.create({ email, otp: otpCode });
+
+        // Dispatch the verification email to the user's inbox
+        await sendOtpEmail(email, otpCode);
+
+        res.status(200).json({
+            message: "Verification code sent to your email. Please check your inbox.",
+            step: 2 // Tells your frontend state to switch open the verification input fields
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+// VERIFY OTP (🔑 STEP 2: Validate Code and Complete Permanent DB Registration)
+const verifyOtp = async (req, res, next) => {
+    console.log("🔑 OTP VERIFICATION FUNCTION HIT");
+
+    try {
+        let { username, email, phone, password, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ message: "Email and verification code are required" });
+        }
+
+        email = email.trim().toLowerCase();
+
+        // 1. Locate matching email and OTP credentials in MongoDB
+        const otpRecord = await Otp.findOne({ email, otp });
+        if (!otpRecord) {
+            return res.status(400).json({ message: "Invalid or expired verification code." });
+        }
+
+        // 2. Prevent race conditions or multi-tab duplicate creations
+        const userExist = await User.findOne({ email });
+        if (userExist) {
+            return res.status(400).json({ message: "User already registered." });
         }
 
         // Explicitly set role and admin status for new users
         const isAdmin = false; 
 
+        // 3. Complete registration to your primary collection permanently
         const userCreated = await User.create({
             username,
             email,
             phone,
-            password, // Let the User model middleware handle hashing
+            password, // Let your pre-save User hook handle hashing dynamically
             isAdmin
         });
 
+        // 4. Wipe out the matching OTP record now that authentication succeeded
+        await Otp.deleteOne({ _id: otpRecord._id });
+
+        // 5. Send back authorization access payloads exactly like your old register route
         res.status(201).json({
-            message: "Registration Successful",
+            message: "Account verified and registered successfully!",
             token: userCreated.generateToken(),
             isAdmin: userCreated.isAdmin,
             userID: userCreated._id.toString()
@@ -73,23 +122,20 @@ const register = async (req, res, next) => {
 
 // LOGIN
 const login = async (req, res, next) => {
-
     console.log(" LOGIN FUNCTION HIT");
 
     try {
-
         let { email, password } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ message: "Email and password are required" });
         }
 
-        email = email.trim().toLowerCase(); // Standardize email casing to match registration
+        email = email.trim().toLowerCase(); 
 
         const userCount = await User.countDocuments();
         console.log(`🔍 Login Attempt: "${email}" | DB: "${mongoose.connection.name}" | Users: ${userCount}`);
 
-        // World-class fix: Escape special regex characters to prevent server crashes on specific inputs
         const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         let userExist = await User.findOne({
@@ -101,21 +147,15 @@ const login = async (req, res, next) => {
 
         if (!userExist) {
             console.log(`❌ Login failed: No user found with identifier: ${email}`);
-            return res.status(400).json({
-                message: "Invalid Credentials"
-            });
+            return res.status(400).json({ message: "Invalid Credentials" });
         }
 
-        // Security check: ensure the user document has a password
         if (!userExist.password) {
             console.log(`❌ Login failed: No password hash for ${email}.`);
             return res.status(500).json({ message: "Account configuration error" });
         }
 
-        const isMatch = await bcrypt.compare(
-            password,
-            userExist.password
-        );
+        const isMatch = await bcrypt.compare(password, userExist.password);
 
         if (isMatch) {
             console.log(`✅ Login Successful: ${email} | Admin: ${userExist.isAdmin}`);
@@ -129,25 +169,21 @@ const login = async (req, res, next) => {
 
         } else {
             console.log(`❌ Login failed: Password mismatch for ${email}.`);
-
-            res.status(401).json({
-                message: "Invalid email or Password"
-            });
+            res.status(401).json({ message: "Invalid email or Password" });
         }
 
     } catch (error) {
-
         next(error);
     }
 };
 
-//to send user data
-const user=async(req,res,next)=>{
-  try{
-     const userData=req.user;
+// to send user data
+const user = async (req, res, next) => {
+  try {
+     const userData = req.user;
      console.log(userData);
-     return res.status(200).json({userData});
-  }catch(error){
+     return res.status(200).json({ userData });
+  } catch (error) {
     next(error);
   }
 };
@@ -165,14 +201,13 @@ const forgotPassword = async (req, res, next) => {
         const totalUsers = await User.countDocuments();
         console.log(`🔍 Password reset search (Identifier: "${sanitizedEmail}") | Total Users in DB: ${totalUsers}`);
 
-        // Escape special regex characters to prevent crashes and allow robust searching
         const escapedEmail = sanitizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         const user = await User.findOne({
             $or: [
-                { email: sanitizedEmail }, // Direct match first
+                { email: sanitizedEmail }, 
                 { username: sanitizedEmail },
-                { email: { $regex: new RegExp("^" + escapedEmail + "$", "i") } }, // Case-insensitive regex
+                { email: { $regex: new RegExp("^" + escapedEmail + "$", "i") } }, 
                 { username: { $regex: new RegExp("^" + escapedEmail + "$", "i") } }
             ]
         });
@@ -182,24 +217,20 @@ const forgotPassword = async (req, res, next) => {
             return res.status(404).json({ message: "User with this email or username does not exist." });
         }
 
-        // Generate a random reset token
         const token = crypto.randomBytes(20).toString("hex");
         console.log(`🔑 Generating new reset token for: ${user.email}`);
         
-        // Data Repair: Clean up any legacy newlines (like "admin\n") in the role array
-        // We do this via updateOne to avoid triggering validation errors during the fix
         if (user.role && Array.isArray(user.role)) {
             const cleanRole = user.role.map(r => typeof r === 'string' ? r.trim() : r);
             await User.updateOne({ _id: user._id }, { $set: { role: cleanRole } });
         }
 
-        // Use findByIdAndUpdate to update the token
         const updateResult = await User.findByIdAndUpdate(user._id, {
             $set: {
                 resetPasswordToken: token,
-                resetPasswordExpires: Date.now() + 3600000, // 1 hour
+                resetPasswordExpires: Date.now() + 3600000, 
             }
-        }, { new: true }); // {new: true} returns the updated document
+        }, { new: true }); 
 
         if (!updateResult) {
             console.error(`❌ Database update failed for User ID: ${user._id}`);
@@ -224,24 +255,18 @@ const forgotPassword = async (req, res, next) => {
             if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
                 const missing = !process.env.EMAIL_USER ? "EMAIL_USER" : "EMAIL_PASS";
                 console.error(`❌ Environment Variable Missing: ${missing}`);
-                console.log("Current working directory:", process.cwd());
                 throw new Error(`Missing ${missing} in environment configuration.`);
             }
             
-            // Create the transporter
             const transporter = getTransporter();
-            
-            // Send the response to the user immediately
             res.status(200).json({ message: "A reset link has been sent to your email." });
 
-            // Trigger the email sending in the background (no 'await')
             transporter.sendMail(mailOptions)
                 .then(() => console.log(`✅ Background: Password reset email sent to: ${user.email}`))
                 .catch((err) => console.error("❌ Background Email Error:", err.message));
 
         } catch (mailError) {
             console.error("❌ Nodemailer Error Details:", mailError);
-            // Since we moved the response up, this catch only handles immediate config errors
         }
     } catch (error) {
         next(error);
@@ -266,7 +291,7 @@ const resetPassword = async (req, res, next) => {
             return res.status(400).json({ message: "Password reset token is invalid or has expired." });
         }
         console.log(`✅ User found for token: ${token}. User ID: ${user._id}`);
-        // Updating password - the pre-save hook in user-model.js will handle hashing
+        
         user.password = password;
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
@@ -283,6 +308,7 @@ const resetPassword = async (req, res, next) => {
 module.exports = {
     home,
     register,
+    verifyOtp, // ✅ Exported new verification route handler
     login,
     user,
     forgotPassword,

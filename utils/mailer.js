@@ -1,13 +1,63 @@
 const nodemailer = require("nodemailer");
 
 /**
+ * Sends a registration verification OTP code email.
+ * @param {string} email - Recipient email
+ * @param {string} otp - The 6-digit verification code
+ */
+const sendOtpEmail = async (email, otp) => {
+    const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+        },
+    });
+
+    const mailOptions = {
+        from: '"SmartDesk AI Verification" <no-reply@smartdesk.com>',
+        to: email,
+        subject: `Your Registration Verification Code: ${otp}`,
+        html: `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: #2563eb; padding: 20px; color: white; text-align: center;">
+                    <h1 style="margin: 0; font-size: 24px;">Verify Your Identity</h1>
+                </div>
+                <div style="padding: 30px; text-align: center;">
+                    <p style="font-size: 16px; text-align: left;">Hello,</p>
+                    <p style="font-size: 16px; text-align: left;">Thank you for registering at SmartDesk AI. Use the verification code below to complete your registration request:</p>
+                    
+                    <div style="background: #f8fafc; padding: 20px; border-radius: 6px; margin: 30px auto; max-width: 200px; border: 1px dashed #2563eb;">
+                        <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #2563eb;">${otp}</span>
+                    </div>
+                    
+                    <p style="font-size: 13px; color: #64748b; text-align: left;">⏳ Note: This verification window expires in **5 minutes**. If you did not make this request, please ignore this message securely.</p>
+                </div>
+                <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b;">
+                    This is an automated security message. Please do not reply directly to this mail.
+                </div>
+            </div>
+        `,
+    };
+
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log("📧 OTP Security Mail Sent:", info.messageId);
+        return info;
+    } catch (error) {
+        console.error("❌ Error sending OTP email:", error);
+        throw error; // Propagates the error to be caught by errorMiddleware
+    }
+};
+
+/**
  * Sends a confirmation email when a ticket is created.
  * @param {string} email - Recipient email
  * @param {object} ticket - The saved ticket object
  */
 const sendTicketEmail = async (email, ticket) => {
     const transporter = nodemailer.createTransport({
-        service: "gmail", // You can use SendGrid, Mailgun, or Gmail
+        service: "gmail", 
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
@@ -63,4 +113,4 @@ const sendTicketEmail = async (email, ticket) => {
     }
 };
 
-module.exports = { sendTicketEmail };
+module.exports = { sendTicketEmail, sendOtpEmail };

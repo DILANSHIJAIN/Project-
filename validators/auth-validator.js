@@ -25,6 +25,9 @@ const signupSchema = z.object({
     .trim()
     .min(6, { message: "Password must be at least 6 chars." })
     .max(255, { message: "Password must not be more than 255 characters" }),
+
+  // 👇 This prevents the middleware from removing the 'otp' property on Step 2
+  otp: z.string().optional(),
 });
 
 module.exports = signupSchema;
