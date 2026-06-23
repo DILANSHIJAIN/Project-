@@ -1,9 +1,10 @@
 const dotenv = require("dotenv");
 const result = dotenv.config();
 
-if (result.error) {
-    console.error("❌ Failed to load .env file:", result.error);
-} else {
+// ✅ ENV LOGGER: Prevents distracting red error logs when deploying to production hosts like Render
+if (result.error && process.env.NODE_ENV !== "production") {
+    console.warn("⚠️ No local .env file found. Falling back to system environment variables.");
+} else if (!result.error) {
     console.log("✅ .env file loaded successfully. Keys found:", Object.keys(result.parsed || {}));
 }
 
@@ -29,6 +30,15 @@ const uploadRoute = require("./upload-router");
 const { generateDailyAnalytics } = require("./controllers/analytics-controller");
 
 const app = express();
+
+// 🧹 BACKEND SANITIZER: Automatically cleans up duplicate slashes (e.g., //api/data/service) 
+// to prevent Express from dropping the request with a 404 error code.
+app.use((req, res, next) => {
+    if (req.url.includes("//")) {
+        req.url = req.url.replace(/\/\/+/g, "/");
+    }
+    next();
+});
 
 // ✅ Dynamically whitelists Vercel branch/preview sub-domains to resolve your CORS blocks
 const corsOptions = {
