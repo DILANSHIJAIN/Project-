@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../store/auth";
+import { useAuth } from "../store/auth"; 
 import { toast } from "react-toastify";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// 🚀 Pull raw environment variable safely
+const RAW_API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// 🧹 AUTO-CLEAN: Automatically removes trailing slashes to eliminate dual-slash (//) route pathing breaks
+const API_URL = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
 
 export const AdminContact = () => {
     const [content, setContent] = useState({
-        contactImage: "/images/contact.png", // Default image
-        mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d224346.48167620343!2d77.06889926628777!3d28.52755440978482!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ce3c6c1f8b7df%3A0x7c5f5d7b5d8c5f6d!2sNew%20Delhi%2C%20Delhi!5e0!3m2!1sen!2sin!4v1710000000000!5m2!1sen!2sin" // Default map
+        contactImage: "/images/contact.png", 
+        mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d224346.48167620343!2d77.06889926628777!3d28.52755440978482!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ce3c6c1f8b7df%3A0x7c5f5d7b5d8c5f6d!2sNew%20Delhi%2C%20Delhi!5e0!3m2!1sen!2sin!4v1710000000000!5m2!1sen!2sin" 
     });
     const { authorizationToken, isAdmin, isLoading } = useAuth();
 
     const getContactContent = async () => {
         if (!authorizationToken) return;
         try {
+            // ✅ Uses the auto-cleaned structural single-slash pipeline routing address cleanly
             const response = await fetch(`${API_URL}/api/admin/contact-content`, {
                 method: "GET",
                 headers: { Authorization: authorizationToken },
@@ -39,6 +44,7 @@ export const AdminContact = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            // ✅ Enforces single slash logic on changes saved down to your Atlas database layers
             const response = await fetch(`${API_URL}/api/admin/contact-content`, {
                 method: "PATCH",
                 headers: {
@@ -50,7 +56,7 @@ export const AdminContact = () => {
             if (response.ok) {
                 toast.success("Contact page content updated successfully");
             } else {
-                console.error("AdminContact: Server response not OK:", response); // Log the full response for debugging
+                console.error("AdminContact: Server response not OK:", response); 
                 let errorData = {};
                 const contentType = response.headers.get("content-type");
                 if (contentType && contentType.includes("application/json")) {

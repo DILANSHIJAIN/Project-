@@ -30,7 +30,7 @@ const { generateDailyAnalytics } = require("./controllers/analytics-controller")
 
 const app = express();
 
-// ✅ UPDATED: Dynamically whitelists Vercel branch/preview sub-domains to resolve your CORS blocks
+// ✅ Dynamically whitelists Vercel branch/preview sub-domains to resolve your CORS blocks
 const corsOptions = {
     origin: (origin, callback) => {
         const allowedOrigins = [
@@ -115,5 +115,6 @@ connectDb()
         });
     })
     .catch((err) => {
-        box.log("DB connection failed:", err);
+        // ✅ FIXED: Changed from 'box.log' to 'console.error' to ensure it never crashes
+        console.error("DB connection failed:", err);
     });

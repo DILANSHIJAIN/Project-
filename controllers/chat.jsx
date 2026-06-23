@@ -2,7 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../store/auth"; 
 import { toast } from "react-toastify";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// 🚀 Pull raw environment variable safely
+const RAW_API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// 🧹 AUTO-CLEAN: Automatically trims any trailing slash to avoid double slash (//) paths during fetch handshakes
+const API_URL = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
 
 // Full list of categories from your project specs
 const CATEGORIES = [
@@ -16,8 +20,9 @@ const CATEGORIES = [
 export const Chat = () => {
     const [message, setMessage] = useState("");
     const [isTyping, setIsTyping] = useState(false);
-    const [suggestions, setSuggestions] = useState([]); // Feature 10
-    const [selectedImages, setSelectedImages] = useState([]); // Feature 8 (Updated for multiple)
+    const [suggestions, setSuggestions] = useState([]); 
+    const [selectedImages, setSelectedImages] = useState([]); 
+    const [inputError, setInputError] = useState(false); // ✅ FIXED: Declared missing validation state reference
     const { user, authorizationToken, isLoading } = useAuth();
     const scrollRef = useRef(null);
     const [chatLog, setChatLog] = useState([]);
@@ -31,6 +36,7 @@ export const Chat = () => {
     const handleInputChange = (e) => {
         const val = e.target.value;
         setMessage(val);
+        if (inputError) setInputError(false); // Clear error layout once user types
         if (val.length > 2) {
             const matches = commonPrompts.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 3);
             setSuggestions(matches);
@@ -70,15 +76,19 @@ export const Chat = () => {
 
     const handleSendMessage = async (e, forceTicket = false) => {
         if (e) e.preventDefault();
-        if (!message.trim() && selectedImages.length === 0) return;
+        if (!message.trim() && selectedImages.length === 0) {
+            setInputError(true);
+            return;
+        }
 
         const userQuery = message || (selectedImages.length > 1 ? "Images Uploaded" : "Image Uploaded");
-        const imagesToUpload = [...selectedImages]; // Store reference before clearing state
+        const imagesToUpload = [...selectedImages]; 
         
         setMessage("");
         setSelectedImages([]);
         setSuggestions([]);
         setIsTyping(true);
+        setInputError(false);
 
         try {
             let uploadedUrls = [];
@@ -167,7 +177,6 @@ export const Chat = () => {
 
             if (response.ok) {
                 toast.success(`Category updated to ${newCategory}`);
-                // Update local chat log to show the change
                 setChatLog(prev => prev.map(msg => 
                     msg.ticketId === ticketId ? { ...msg, category: newCategory } : msg
                 ));
@@ -207,7 +216,6 @@ export const Chat = () => {
                                     ))}
                                     <p style={{ margin: 0, fontSize: "1.6rem" }}>{chat.content}</p>
                                     
-                                    {/* Troubleshooting Actions */}
                                     {!chat.isTicket && chat.role === "bot" && chat.content.includes("proceed with a ticket") && (
                                         <div style={{ marginTop: "1rem", display: "flex", gap: "1rem" }}>
                                             <button onClick={() => { setMessage("Please proceed with the ticket."); handleSendMessage(null, true); }} style={{ padding: "0.5rem 1rem", borderRadius: "0.4rem", background: "#cc0000", border: "none", color: "white", cursor: "pointer", fontSize: "1.2rem" }}>Create Ticket</button>
@@ -215,7 +223,6 @@ export const Chat = () => {
                                         </div>
                                     )}
                                     
-                                    {/* Category Correction Option */}
                                     {chat.isTicket && (
                                         <div style={{ marginTop: "1.5rem", borderTop: "1px solid #4b5563", paddingTop: "1rem" }}>
                                             <p style={{ fontSize: "1.2rem", color: "#94a3b8", marginBottom: "0.5rem" }}>Wrong category? Select the right one:</p>
@@ -258,7 +265,6 @@ export const Chat = () => {
                                 ))}
                             </div>
                         )}
-                        {/* Attached Images Preview Tray */}
                         {selectedImages.length > 0 && (
                             <div style={{ 
                                 background: "#0f172a", 
