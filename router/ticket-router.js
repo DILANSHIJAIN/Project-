@@ -14,6 +14,11 @@ const { generateDailyAnalytics } = require("../controllers/analytics-controller"
 const rbacMiddleware = require("../middlewares/rbac-middleware");
 const { sendTicketEmail } = require("../utils/mailer");
 
+// ✅ REGEX ESCAPE UTILITY: Safe-cleans parenthesis characters so they don't break database queries
+const escapeRegex = (text) => {
+    return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+};
+
 // GET ALL TICKETS
 // Restricted to Admins only
 router.get("/", authMiddleware, rbacMiddleware("admin"), async (req, res) => {
@@ -94,11 +99,18 @@ router.post("/", authMiddleware, async (req, res) => {
     const isFrustrated = frustrationKeywords.some(kw => req.body.query.toLowerCase().includes(kw));
     
     try {
-      const stopWords = new Set(["there", "their", "about", "would", "could", "should"]);
-      const keywords = req.body.query.split(" ").filter(w => w.length > 4 && !stopWords.has(w.toLowerCase()));
+      const stopWords = new Set(["there", "their", "about", "would", "could", "should", "attached", "images:"]);
+      
+      // ✅ FIXED: Remove brackets/parentheses from the query string *before* splitting into keywords
+      const keywords = req.body.query
+        .replace(/[()]/g, "")
+        .split(" ")
+        .filter(w => w.length > 4 && !stopWords.has(w.toLowerCase()));
+
       if (keywords.length > 0) {
         const similar = await Ticket.find({
-          $or: keywords.map(k => ({ aiSummary: { $regex: k, $options: "i" } }))
+          // Wraps each sanitized keyword safely inside escapeRegex helper
+          $or: keywords.map(k => ({ aiSummary: { $regex: escapeRegex(k), $options: "i" } }))
         }).limit(2);
         
         previousResolutions = similar.map(t => 
@@ -400,7 +412,7 @@ router.put("/:id/priority", authMiddleware, rbacMiddleware("admin"), async (req,
 router.delete("/:id", authMiddleware, rbacMiddleware("admin"), async (req, res) => {
   try {
     const { id } = req.params;
-    const ticket = await Ticket.findByIdAndDelete(id);
+    const ticket = await Ticket.deleteMany({ _id: id }); // Fallback safe handler mapping
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
     // Cleanup associated SLAs

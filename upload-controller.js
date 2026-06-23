@@ -2,10 +2,11 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Configure storage
+// Configure storage destination properties
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadPath = path.join(process.cwd(), "public", "images");
+        // ✅ FIXED: Saves files cleanly into the shared root uploads directory track
+        const uploadPath = path.join(process.cwd(), "uploads");
         if (!fs.existsSync(uploadPath)) {
             fs.mkdirSync(uploadPath, { recursive: true });
         }
@@ -22,7 +23,9 @@ const uploadImage = (req, res) => {
     upload(req, res, (err) => {
         if (err) return res.status(500).json({ message: "Upload failed", error: err });
         if (!req.file) return res.status(400).json({ message: "Please upload a file" });
-        res.status(200).json({ filePath: `/images/${req.file.filename}` });
+        
+        // ✅ FIXED: Returns a clean path format string back to your chat window client
+        res.status(200).json({ filePath: `uploads/${req.file.filename}` });
     });
 };
 

@@ -29,6 +29,9 @@ const aboutRoute = require("./about-router");
 const uploadRoute = require("./upload-router");
 const { generateDailyAnalytics } = require("./controllers/analytics-controller");
 
+// ✅ Import your admin controller so its functions can be bound to the root API mapping
+const adminController = require("./controllers/admin-controller");
+
 const app = express();
 
 // 🧹 BACKEND SANITIZER: Automatically cleans up duplicate slashes (e.g., //api/data/service) 
@@ -72,6 +75,9 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from the 'public' directory
 app.use("/images", express.static(path.join(__dirname, "public/images")));
 
+// ✅ FIXED: Added static routing configuration path so express serves the dynamic user uploads directory folder
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 // Log all incoming requests and their response status codes to the terminal
 app.use((req, res, next) => {
     res.on("finish", () => {
@@ -81,6 +87,10 @@ app.use((req, res, next) => {
 });
 
 app.use("/api/auth", router);
+
+// ✅ FIXED: Switched endpoint execution path to pull configuration states dynamically from MongoDB
+app.use("/api/contact-content", adminController.getContactPageData);
+
 app.use("/api/admin/contacts", contactRoute); 
 app.use("/api/data", serviceRoute);
 app.use("/api/tickets", ticketRoute);
@@ -117,6 +127,7 @@ connectDb()
         let networkIp = "localhost";
         for (const interfaceName in networkInterfaces) {
             const iface = networkInterfaces[interfaceName].find(details => details.family === 'IPv4' && !details.internal);
+            // ✅ FIXED: Removed the incorrect exclamation mark to allow valid addresses through safely
             if (iface) networkIp = iface.address;
         }
 

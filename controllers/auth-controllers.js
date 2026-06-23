@@ -305,12 +305,30 @@ const resetPassword = async (req, res, next) => {
     }
 };
 
+// 📞 NEW FUNCTION: Handles the frontend content pipeline
+const getContactContent = async (req, res, next) => {
+    try {
+        const contactDetails = {
+            email: "support@smartdeskai.com",
+            phone: "+1 (555) 019-2834",
+            address: "Tech Innovation Hub, Suite 404",
+            businessHours: "Monday - Friday, 9 AM - 6 PM PST",
+            description: "Have questions about our ticketing system or AI integration? Get in touch with our support desk team."
+        };
+        
+        return res.status(200).json(contactDetails);
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     home,
     register,
-    verifyOtp, // ✅ Exported new verification route handler
+    verifyOtp, 
     login,
     user,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    getContactContent // ✅ Added to export configuration list safely
 };

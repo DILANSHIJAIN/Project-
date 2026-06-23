@@ -45,6 +45,8 @@ router.post(
 
 router.route("/user").get(authMiddleware, authcontrollers.user);
 
+router.route("/contact-content").get(authcontrollers.getContactContent);
+
 router.route("/forgot-password").post(authcontrollers.forgotPassword);
 router.route("/reset-password/:token").post(authcontrollers.resetPassword);
 
