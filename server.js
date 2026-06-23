@@ -16,9 +16,9 @@ const router = require("./router/auth-router");
 const contactRoute = require("./router/contact-router");
 const connectDb = require("./utils/db");
 const errorMiddleware = require("./middlewares/error-middleware");
-const serviceRoute=require("./router/service-router");
+const serviceRoute = require("./router/service-router");
 const ticketRoute = require("./router/ticket-router");
-const adminRoute=require("./router/admin-router");
+const adminRoute = require("./router/admin-router");
 const notificationRoute = require("./router/notification-router");
 const slaRoute = require("./router/sla-router");
 const analyticsRoute = require("./router/analytics-router");
@@ -30,18 +30,21 @@ const { generateDailyAnalytics } = require("./controllers/analytics-controller")
 
 const app = express();
 
-// Updated corsOptions layout to clean up deployment URLs securely
+// ✅ UPDATED: Dynamically whitelists Vercel branch/preview sub-domains to resolve your CORS blocks
 const corsOptions = {
     origin: (origin, callback) => {
         const allowedOrigins = [
             process.env.FRONTEND_URL, 
             "http://localhost:5173", 
             "http://127.0.0.1:5173",
-            "http://10.238.173.228:5173" // Hardcoded safety for your current IP
+            "http://10.238.173.228:5173"
         ];
         
-        // Checks exact matches and dynamically trims trailing slashes from deployment URLs
-        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
+        // Clean trailing slash if present
+        const cleanOrigin = origin ? origin.replace(/\/$/, "") : null;
+
+        // Trust the request if it has no origin (like mobile tools), matches our list, or ends with .vercel.app
+        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes(cleanOrigin) || origin.endsWith(".vercel.app")) {
             callback(null, true);
         } else {
             console.error(`🛑 Blocked by CORS: Origin was [${origin}]`);
@@ -68,7 +71,7 @@ app.use((req, res, next) => {
 });
 
 app.use("/api/auth", router);
-app.use("/api/admin/contacts", contactRoute); // THIS LINE MUST BE EXACTLY THIS
+app.use("/api/admin/contacts", contactRoute); 
 app.use("/api/data", serviceRoute);
 app.use("/api/tickets", ticketRoute);
 app.use("/api/notifications", notificationRoute);
@@ -112,5 +115,5 @@ connectDb()
         });
     })
     .catch((err) => {
-        console.error("DB connection failed:", err);
+        box.log("DB connection failed:", err);
     });
