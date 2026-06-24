@@ -6,25 +6,12 @@ const nodemailer = require("nodemailer");
  * @param {string} otp - The 6-digit verification code
  */
 const sendOtpEmail = async (email, otp) => {
-    // ✅ FIXED: Configured with explicit host, port 587, and IPv4 forcing to bypass Render's network blocks
     const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false, 
+        service: "gmail",
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
         },
-        connectionTimeout: 10000, 
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        dns: {
-            family: 4 // ✅ CRITICAL: Forces Node.js to use IPv4 instead of failing on IPv6 (ENETUNREACH)
-        },
-        tls: {
-            rejectUnauthorized: false,
-            ciphers: 'SSLv3'
-        }
     });
 
     const mailOptions = {
@@ -59,7 +46,7 @@ const sendOtpEmail = async (email, otp) => {
         return info;
     } catch (error) {
         console.error("❌ Error sending OTP email:", error);
-        throw error; 
+        throw error; // Propagates the error to be caught by errorMiddleware
     }
 };
 
@@ -69,25 +56,12 @@ const sendOtpEmail = async (email, otp) => {
  * @param {object} ticket - The saved ticket object
  */
 const sendTicketEmail = async (email, ticket) => {
-    // ✅ FIXED: Configured with explicit host, port 587, and IPv4 forcing to bypass Render's network blocks
     const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
+        service: "gmail", 
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
         },
-        connectionTimeout: 10000, 
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        dns: {
-            family: 4 // ✅ CRITICAL: Forces Node.js to use IPv4 instead of failing on IPv6 (ENETUNREACH)
-        },
-        tls: {
-            rejectUnauthorized: false,
-            ciphers: 'SSLv3'
-        }
     });
 
     // Verify connection configuration

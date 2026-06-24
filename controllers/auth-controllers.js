@@ -3,10 +3,8 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-
-// ✅ Clean relative pathing to reach your root directory files safely
-const Otp = require("../otp-model"); 
-const { sendOtpEmail } = require("../utils/mailer"); 
+const Otp = require(require('path').join(process.cwd(), 'otp-model.js'));
+const { sendOtpEmail } = require("../utils/mailer"); // ✅ Loads your centralized mailer utility
 
 // Function to get email transporter
 const getTransporter = () => {
@@ -56,19 +54,13 @@ const register = async (req, res, next) => {
         await Otp.deleteOne({ email });
         await Otp.create({ email, otp: otpCode });
 
-        // ✅ FIXED: Return the 200 response to unfreeze the frontend button instantly
+        // Dispatch the verification email to the user's inbox
+        await sendOtpEmail(email, otpCode);
+
         res.status(200).json({
             message: "Verification code sent to your email. Please check your inbox.",
-            step: 2 
+            step: 2 // Tells your frontend state to switch open the verification input fields
         });
-
-        // ✅ Run email sending in the background so it never pauses HTTP response threads
-        sendOtpEmail(email, otpCode)
-            .then(() => console.log(`📧 OTP successfully dispatched to: ${email}`))
-            .catch((mailErr) => {
-                console.error("❌ Background Mail Delivery Failure:");
-                console.error(mailErr.message || mailErr);
-            });
 
     } catch (error) {
         next(error);
@@ -108,7 +100,7 @@ const verifyOtp = async (req, res, next) => {
             username,
             email,
             phone,
-            password, 
+            password, // Let your pre-save User hook handle hashing dynamically
             isAdmin
         });
 
@@ -338,5 +330,5 @@ module.exports = {
     user,
     forgotPassword,
     resetPassword,
-    getContactContent 
+    getContactContent // ✅ Added to export configuration list safely
 };
