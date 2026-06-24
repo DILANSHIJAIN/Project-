@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 
-// ✅ FIXED: Using clean relative pathing instead of risky process.cwd() execution wrappers
+// ✅ Clean relative pathing to reach your root directory files safely
 const Otp = require("../otp-model"); 
 const { sendOtpEmail } = require("../utils/mailer"); 
 
@@ -56,13 +56,19 @@ const register = async (req, res, next) => {
         await Otp.deleteOne({ email });
         await Otp.create({ email, otp: otpCode });
 
-        // Dispatch the verification email to the user's inbox
-        await sendOtpEmail(email, otpCode);
-
+        // ✅ FIXED: Return the 200 response to unfreeze the frontend button instantly
         res.status(200).json({
             message: "Verification code sent to your email. Please check your inbox.",
             step: 2 
         });
+
+        // ✅ Run email sending in the background so it never pauses HTTP response threads
+        sendOtpEmail(email, otpCode)
+            .then(() => console.log(`📧 OTP successfully dispatched to: ${email}`))
+            .catch((mailErr) => {
+                console.error("❌ Background Mail Delivery Failure:");
+                console.error(mailErr.message || mailErr);
+            });
 
     } catch (error) {
         next(error);
