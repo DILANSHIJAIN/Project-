@@ -3,8 +3,10 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const Otp = require(require('path').join(process.cwd(), 'otp-model.js'));
-const { sendOtpEmail } = require("../utils/mailer"); // ✅ Loads your centralized mailer utility
+
+// ✅ FIXED: Using clean relative pathing instead of risky process.cwd() execution wrappers
+const Otp = require("../otp-model"); 
+const { sendOtpEmail } = require("../utils/mailer"); 
 
 // Function to get email transporter
 const getTransporter = () => {
@@ -59,7 +61,7 @@ const register = async (req, res, next) => {
 
         res.status(200).json({
             message: "Verification code sent to your email. Please check your inbox.",
-            step: 2 // Tells your frontend state to switch open the verification input fields
+            step: 2 
         });
 
     } catch (error) {
@@ -100,7 +102,7 @@ const verifyOtp = async (req, res, next) => {
             username,
             email,
             phone,
-            password, // Let your pre-save User hook handle hashing dynamically
+            password, 
             isAdmin
         });
 
@@ -330,5 +332,5 @@ module.exports = {
     user,
     forgotPassword,
     resetPassword,
-    getContactContent // ✅ Added to export configuration list safely
+    getContactContent 
 };
