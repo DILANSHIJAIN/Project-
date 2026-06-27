@@ -90,7 +90,7 @@ This is the client-side user interface for the AI-Powered Helpdesk System. It pr
 
 1. **Clone the frontend repository:**
    ```bash
-   git clone [https://github.com/your-username/ai-helpdesk-frontend.git](https://github.com/DILANSHIJAIN/project-frontend.git)
+   git clone [https://github.com/DILANSHIJAIN/project-frontend.git](https://github.com/DILANSHIJAIN/project-frontend.git)
    cd project-frontend
 Configure Environment Variables (Optional):
 If you use a .env file to point to your backend:
